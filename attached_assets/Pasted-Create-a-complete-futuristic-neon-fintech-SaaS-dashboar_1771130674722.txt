@@ -1,0 +1,188 @@
+Create a complete futuristic neon fintech SaaS dashboard UI for a project called:
+
+"RBI AI Assistant – Intelligent Circular Compliance System"
+
+This is an AI-powered regulatory document intelligence platform that answers queries from RBI circular PDFs using advanced AI.
+
+IMPORTANT:
+Only create frontend (no backend logic). Use dummy data where needed.
+Use pure HTML, CSS, and vanilla JavaScript.
+Create separate files:
+- index.html
+- style.css
+- script.js
+
+========================================
+🎨 DESIGN STYLE
+========================================
+
+Theme:
+- Dark futuristic fintech dashboard
+- Neon blue and purple glow accents
+- Glassmorphism panels
+- Soft glowing borders
+- Smooth hover animations
+- Modern SaaS professional feel
+
+UI Effects:
+- Subtle animated gradients
+- Neon hover glow
+- Smooth page transitions
+- Card hover elevation effect
+- Rounded corners (12px–16px)
+- Professional typography
+
+Make it look like a premium AI fintech SaaS product.
+
+========================================
+📐 LAYOUT STRUCTURE
+========================================
+
+1️⃣ LEFT SIDEBAR (Fixed)
+
+Items:
+- Dashboard
+- Upload Circular
+- Circular Library
+- AI Assistant
+- Analytics
+- Settings
+
+Features:
+- Neon hover highlight
+- Active tab indicator
+- Smooth transition on click
+
+When clicking:
+- Each menu item should dynamically switch content in main area without page reload.
+
+========================================
+2️⃣ TOP NAVBAR
+========================================
+
+Display:
+- App name: RBI AI Assistant
+- Subtitle: Intelligent Circular Compliance System
+- System status indicator (Online/Active Model)
+- Profile icon placeholder
+
+========================================
+3️⃣ MAIN CONTENT AREA
+========================================
+
+A. Default View (Dashboard)
+
+Show glowing stat cards:
+
+- Total Circulars (dummy number)
+- Queries Processed
+- Compliance Accuracy %
+- Active AI Model
+
+Below that:
+- Placeholder analytics chart area
+- Recent queries panel
+- System performance card
+
+----------------------------------------
+
+B. Upload Circular Section
+
+- Drag & drop upload UI (design only)
+- File list preview
+- Upload progress animation (dummy)
+- Neon styled upload button
+
+----------------------------------------
+
+C. Circular Library Section
+
+- List of uploaded circulars
+- Search bar
+- Filter option
+- Table style layout
+- Hover highlight effect
+
+----------------------------------------
+
+D. AI Assistant Section (IMPORTANT)
+
+When clicking "AI Assistant":
+
+Hide dashboard.
+Show full-width chat interface.
+
+Chat layout must include:
+
+- Scrollable chat history
+- AI message bubble (left)
+- User message bubble (right)
+- Source citation area below AI message
+- Timestamp for messages
+- Animated typing indicator
+- Input field at bottom
+- Send button
+- Microphone button with neon glow effect
+- Clear chat button
+
+Add dummy AI response logic in JavaScript:
+When user sends message → show sample AI reply with source reference.
+
+----------------------------------------
+
+E. Analytics Section
+
+- Dummy chart placeholders
+- Performance metrics cards
+- Circular usage statistics
+
+----------------------------------------
+
+F. Settings Section
+
+- Toggle dark/light theme
+- Model selection dropdown (dummy)
+- Voice enable toggle
+- Clear data button (dummy)
+
+========================================
+📱 RESPONSIVENESS
+========================================
+
+- Fully responsive layout
+- Sidebar collapses on small screens
+- Chat adapts to mobile view
+- Maintain neon aesthetic on all sizes
+
+========================================
+⚡ ANIMATIONS
+========================================
+
+- Smooth fade transitions between sections
+- Neon glow pulse animation
+- Button hover scaling
+- Loading spinner animation
+- AI typing dots animation
+
+========================================
+🧠 PROJECT CONTEXT (IMPORTANT FOR DESIGN)
+
+This project is not a simple chatbot.
+It is an AI-powered RBI regulatory compliance assistant that:
+
+- Reads RBI circular PDFs
+- Extracts complex tables
+- Answers banking compliance questions
+- Provides source citation
+- Supports voice interaction
+
+The UI must reflect:
+- Serious banking compliance tool
+- Advanced AI system
+- Professional SaaS product
+- Hackathon-winning level interface
+
+========================================
+
+Deliver clean structured code with proper comments.
+Make it visually impressive and production-level quality.

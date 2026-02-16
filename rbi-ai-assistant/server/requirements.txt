@@ -5,7 +5,7 @@ python-dotenv
 pydantic
 sentence-transformers
 torch
-
-pypdf
+pymupdf
+python-multipart
 requests
 httpx

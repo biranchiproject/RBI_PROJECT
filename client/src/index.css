@@ -5,34 +5,38 @@
 @tailwind utilities;
 
 :root {
-  --background: 240 30% 8%; /* Very dark blue/black #0e0e1a */
+  --background: 222 23% 6%;
+  /* Deep Charcoal #0D0F14 */
   --foreground: 210 40% 98%;
-  
-  --card: 240 25% 12%; /* Slightly lighter dark */
+
+  --card: 222 23% 8%;
+  /* Slightly lighter than background */
   --card-foreground: 210 40% 98%;
- 
-  --popover: 240 25% 12%;
+
+  --popover: 222 23% 8%;
   --popover-foreground: 210 40% 98%;
- 
-  --primary: 180 100% 50%; /* Neon Cyan #00FFFF */
-  --primary-foreground: 240 30% 8%;
- 
-  --secondary: 270 100% 60%; /* Neon Purple #9D00FF */
+
+  --primary: 152 100% 50%;
+  /* Neon Green #00FF88 */
+  --primary-foreground: 222 23% 6%;
+
+  --secondary: 152 60% 40%;
+  /* Darker Green or Muted Green */
   --secondary-foreground: 210 40% 98%;
- 
-  --muted: 240 20% 18%;
+
+  --muted: 222 20% 15%;
   --muted-foreground: 215 20% 65%;
- 
-  --accent: 240 20% 18%;
+
+  --accent: 222 20% 15%;
   --accent-foreground: 210 40% 98%;
- 
+
   --destructive: 0 100% 60%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 240 20% 20%;
-  --input: 240 20% 20%;
-  --ring: 180 100% 50%;
- 
+  --border: 222 20% 15%;
+  --input: 222 20% 15%;
+  --ring: 152 100% 50%;
+
   --radius: 0.75rem;
 }
 
@@ -40,13 +44,18 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', sans-serif;
-    background-image: 
-      radial-gradient(circle at 15% 50%, rgba(157, 0, 255, 0.08), transparent 25%),
-      radial-gradient(circle at 85% 30%, rgba(0, 255, 255, 0.08), transparent 25%);
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(0, 255, 136, 0.05), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(0, 255, 136, 0.03), transparent 25%);
     background-attachment: fixed;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: 'Rajdhani', sans-serif;
     @apply tracking-wide;
   }
@@ -54,30 +63,56 @@
 
 @layer components {
   .glass-panel {
-    @apply bg-card/60 backdrop-blur-md border border-white/10 shadow-xl;
+    @apply bg-[#0D0F14]/80 backdrop-blur-md border border-[#00FF88]/10 shadow-xl;
   }
-  
+
   .neon-border {
-    @apply border border-primary/50 shadow-[0_0_10px_rgba(0,255,255,0.2)];
+    @apply border border-primary/50;
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.15);
+    /* Reduced blur and opacity */
   }
 
   .neon-text-cyan {
-    @apply text-primary drop-shadow-[0_0_8px_rgba(0,255,255,0.5)];
+    @apply text-primary;
+    filter: drop-shadow(0 0 5px rgba(0, 255, 136, 0.4));
+    /* Tighter blur, slightly lower opacity */
   }
 
   .neon-text-purple {
-    @apply text-secondary drop-shadow-[0_0_8px_rgba(157,0,255,0.5)];
+    @apply text-white;
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
+    /* Tighter blur, lower opacity */
   }
-  
+
   /* Custom Scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
+
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     @apply bg-white/10 rounded-full hover:bg-white/20;
+  }
+}
+
+@layer utilities {
+  .fade-in {
+    animation: fadeIn 0.3s ease-in-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }

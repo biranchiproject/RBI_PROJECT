@@ -1,16 +1,16 @@
-import { Sidebar } from "@/components/Sidebar";
+import Layout from "@/components/Layout";
 import { Header } from "@/components/Header";
 import { useAnalytics } from "@/hooks/use-analytics";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  LineChart, 
-  Line 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line
 } from "recharts";
 import { motion } from "framer-motion";
 
@@ -28,13 +28,12 @@ export default function Analytics() {
   ];
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <Sidebar />
-      <main className="flex-1 ml-64 p-8 overflow-y-auto">
+    <Layout>
+      <div className="p-8 overflow-y-auto h-full">
         <Header title="System Analytics" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="glass-panel p-6 rounded-2xl h-[400px]"
@@ -43,19 +42,19 @@ export default function Analytics() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                <XAxis dataKey="name" stroke="#666" tick={{fill: '#888'}} axisLine={false} tickLine={false} />
-                <YAxis stroke="#666" tick={{fill: '#888'}} axisLine={false} tickLine={false} />
-                <Tooltip 
-                  cursor={{fill: 'rgba(255,255,255,0.05)'}}
-                  contentStyle={{ backgroundColor: '#0e0e1a', borderColor: '#333', borderRadius: '8px' }}
+                <XAxis dataKey="name" stroke="#666" tick={{ fill: '#888' }} axisLine={false} tickLine={false} />
+                <YAxis stroke="#666" tick={{ fill: '#888' }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  contentStyle={{ backgroundColor: '#0D0F14', borderColor: '#333', borderRadius: '8px' }}
                 />
-                <Bar dataKey="queries" fill="#00FFFF" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="compliance" fill="#9D00FF" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="queries" fill="#00FF88" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="compliance" fill="#FFFFFF" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -65,24 +64,24 @@ export default function Analytics() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                <XAxis dataKey="name" stroke="#666" tick={{fill: '#888'}} axisLine={false} tickLine={false} />
-                <YAxis stroke="#666" tick={{fill: '#888'}} axisLine={false} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0e0e1a', borderColor: '#333', borderRadius: '8px' }}
+                <XAxis dataKey="name" stroke="#666" tick={{ fill: '#888' }} axisLine={false} tickLine={false} />
+                <YAxis stroke="#666" tick={{ fill: '#888' }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0D0F14', borderColor: '#333', borderRadius: '8px' }}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="queries" 
-                  stroke="#00FFFF" 
+                <Line
+                  type="monotone"
+                  dataKey="queries"
+                  stroke="#00FF88"
                   strokeWidth={3}
-                  dot={{fill: '#00FFFF', strokeWidth: 2}}
-                  activeDot={{r: 6, fill: '#fff'}} 
+                  dot={{ fill: '#00FF88', strokeWidth: 2 }}
+                  activeDot={{ r: 6, fill: '#fff' }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </motion.div>
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }

@@ -9,11 +9,11 @@ export interface IStorage {
   // Circulars
   getCirculars(): Promise<Circular[]>;
   createCircular(circular: InsertCircular): Promise<Circular>;
-  
+
   // Queries/Chat
   getQueries(): Promise<Query[]>;
   createQuery(query: InsertQuery): Promise<Query>;
-  
+
   // Analytics
   getAnalytics(): Promise<Analytic[]>;
   seedAnalytics(): Promise<void>;
@@ -52,16 +52,16 @@ export class DatabaseStorage implements IStorage {
         { metric: "Active Users", value: 45 },
       ]);
     }
-    
+
     // Seed some circulars if empty
     const circs = await db.select().from(circulars);
     if (circs.length === 0) {
-        await db.insert(circulars).values([
-            { title: "Master Direction - Reserve Bank of India (KYC) Directions, 2016", category: "KYC", status: "Active", summary: "Consolidated KYC guidelines for regulated entities.", fileSize: "2.4 MB" },
-            { title: "Prudential Norms on Income Recognition, Asset Classification", category: "Lending", status: "Active", summary: "Guidelines on NPA classification and provisioning.", fileSize: "1.8 MB" },
-            { title: "Foreign Exchange Management (Export of Goods and Services) Regulations", category: "Forex", status: "Superseded", summary: "Updated regulations for export transactions.", fileSize: "3.1 MB" },
-            { title: "Framework for Compromise Settlements and Technical Write-offs", category: "Recovery", status: "Active", summary: "Instructions for regulated entities on compromise settlements.", fileSize: "1.2 MB" },
-        ]);
+      await db.insert(circulars).values([
+        { title: "Master Direction - Reserve Bank of India (KYC) Directions, 2016", category: "KYC", status: "Active", summary: "Consolidated KYC guidelines for regulated entities.", fileSize: "2.4 MB" },
+        { title: "Prudential Norms on Income Recognition, Asset Classification", category: "Lending", status: "Active", summary: "Guidelines on NPA classification and provisioning.", fileSize: "1.8 MB" },
+        { title: "Foreign Exchange Management (Export of Goods and Services) Regulations", category: "Forex", status: "Superseded", summary: "Updated regulations for export transactions.", fileSize: "3.1 MB" },
+        { title: "Framework for Compromise Settlements and Technical Write-offs", category: "Recovery", status: "Active", summary: "Instructions for regulated entities on compromise settlements.", fileSize: "1.2 MB" },
+      ]);
     }
   }
 }

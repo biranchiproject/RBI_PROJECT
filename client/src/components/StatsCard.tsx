@@ -12,19 +12,19 @@ interface StatsCardProps {
   delay?: number;
 }
 
-export function StatsCard({ 
-  label, 
-  value, 
-  icon: Icon, 
-  trend, 
-  trendUp, 
+export function StatsCard({
+  label,
+  value,
+  icon: Icon,
+  trend,
+  trendUp,
   color = "default",
-  delay = 0 
+  delay = 0
 }: StatsCardProps) {
   const colorMap = {
     cyan: "text-primary border-primary/30 bg-primary/5",
-    purple: "text-secondary border-secondary/30 bg-secondary/5",
-    blue: "text-blue-500 border-blue-500/30 bg-blue-500/5",
+    purple: "text-white border-white/30 bg-white/5", // Remapped to white/neutral
+    blue: "text-primary border-primary/30 bg-primary/5", // Remapped to primary (green)
     default: "text-white border-white/10 bg-white/5",
   };
 
@@ -42,8 +42,8 @@ export function StatsCard({
         <div className={cn(
           "p-3 rounded-xl transition-colors duration-300",
           color === "cyan" && "bg-primary/10 text-primary group-hover:bg-primary/20",
-          color === "purple" && "bg-secondary/10 text-secondary group-hover:bg-secondary/20",
-          color === "blue" && "bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20",
+          color === "purple" && "bg-white/10 text-white group-hover:bg-white/20",
+          color === "blue" && "bg-primary/10 text-primary group-hover:bg-primary/20",
           color === "default" && "bg-white/10 text-white"
         )}>
           <Icon className="w-6 h-6" />
@@ -51,8 +51,8 @@ export function StatsCard({
         {trend && (
           <span className={cn(
             "text-xs font-medium px-2 py-1 rounded-full border",
-            trendUp 
-              ? "bg-green-500/10 text-green-400 border-green-500/20" 
+            trendUp
+              ? "bg-green-500/10 text-green-400 border-green-500/20"
               : "bg-red-500/10 text-red-400 border-red-500/20"
           )}>
             {trend}

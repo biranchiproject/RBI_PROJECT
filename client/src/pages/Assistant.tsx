@@ -185,7 +185,7 @@ export default function Assistant() {
         formData.append("query", userQuery);
         formData.append("file", currentFile);
 
-        response = await fetch(`${API_BASE_URL}/chat`, {
+        response = await fetch(`${API_BASE_URL}/api/chat`, {
           method: "POST",
           body: formData,
         });
@@ -199,7 +199,7 @@ export default function Assistant() {
 
       } else {
         // Step 2 Compliance: Use /api/ask for questions
-        response = await fetch(`${API_BASE_URL}/ask`, {
+        response = await fetch(`${API_BASE_URL}/api/ask`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: userQuery }) // Changed key to 'question'

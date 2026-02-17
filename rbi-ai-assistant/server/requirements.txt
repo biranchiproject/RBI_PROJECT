@@ -13,3 +13,4 @@ python-multipart
 requests
 httpx
 websockets>=13.0
+gunicorn

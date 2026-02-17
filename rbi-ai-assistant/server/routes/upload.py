@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from services.supabase_client import get_supabase
 import fitz # PyMuPDF
+import pdfplumber
+import io
 from services.embedding_service import generate_embedding
 from dotenv import load_dotenv
 import asyncio
@@ -17,9 +19,33 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_MIME_TYPES = ["application/pdf"]
 BUCKET_NAME = "rbi-documents"
 
+def table_to_markdown(table):
+    """Converts a pdfplumber table (list of lists) to a GitHub-flavored Markdown table string."""
+    if not table:
+        return ""
+    
+    # Filter out empty rows and ensure all cells are strings
+    clean_table = []
+    for row in table:
+        if any(row):  # Row has at least one non-None/non-empty cell
+            clean_table.append([str(cell).strip() if cell is not None else "" for cell in row])
+    
+    if len(clean_table) < 2:  # Need at least a header and one row
+        return ""
+
+    md = "\n### [Tabular Data extracted]\n"
+    # Header Row
+    md += "| " + " | ".join(clean_table[0]) + " |\n"
+    # Alignment/Separator Row
+    md += "| " + " | ".join(["---"] * len(clean_table[0])) + " |\n"
+    # Data Rows
+    for row in clean_table[1:]:
+        md += "| " + " | ".join(row) + " |\n"
+    
+    return md + "\n"
 
 
-def chunk_text(text: str, chunk_size=1000, overlap=100):
+def chunk_text(text: str, chunk_size=1200, overlap=200):
     """
     Splits text into chunks of specified size with overlap.
     """
@@ -78,22 +104,60 @@ async def upload_pdf(
         )
 
     
-    # 3. Extract Text Content (PyMuPDF)
-    extracted_text = ""
+    # 3. Extract Text & Tables - Hybrid Approach
+    full_text = ""
+    pages_content = [] # List of {text, page_number}
+    total_pages = 0
+    
     try:
-        # PyMuPDF is sync, so we wrap it if it takes too long, but usually fast for small docs
-        # For very large docs, this could block.
-        with fitz.open(stream=content, filetype="pdf") as doc:
-            for page in doc:
-                extracted_text += page.get_text()
-        print(f"✅ Text extracted: {len(extracted_text)} characters")
+        print("🔹 Extracting text and searching for tables...")
+        with pdfplumber.open(io.BytesIO(content)) as plub_doc:
+            total_pages = len(plub_doc.pages)
+            with fitz.open(stream=content, filetype="pdf") as fitz_doc:
+                for page_num in range(len(fitz_doc)):
+                    # Get page from both libraries
+                    fitz_page = fitz_doc[page_num]
+                    plub_page = plub_doc.pages[page_num]
+                    
+                    # 1. Base text from Fitz (fast and accurate for text)
+                    text = fitz_page.get_text()
+                    
+                    # 2. Extract Tables from pdfplumber
+                    tables = plub_page.extract_tables()
+                    table_md = ""
+                    for table in tables:
+                        table_md += table_to_markdown(table)
+                    
+                    # 3. Append Markdown tables to text
+                    if table_md:
+                        print(f"   📊 Table found on page {page_num + 1}")
+                        text += "\n" + table_md
+                        
+                    full_text += text
+                    pages_content.append({
+                        "text": text,
+                        "page_number": page_num + 1 
+                    })
+                    
+        print(f"✅ Enhanced extraction complete. {len(pages_content)} pages processed.")
     except Exception as e:
-        print(f"❌ Text extraction failed: {e}")
-        extracted_text = ""
+        print(f"❌ Enhanced extraction failed: {e}. Falling back to standard text extraction.")
+        full_text = ""
+        pages_content = []
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            total_pages = len(doc)
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                full_text += text
+                pages_content.append({
+                    "text": text,
+                    "page_number": page_num + 1 
+                })
     
     # 4. Generate Unique Filename & Path
     file_extension = os.path.splitext(file.filename)[1] or ".pdf"
     unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_size_kb = round(len(content) / 1024, 2)
     
     try:
         supabase = get_supabase()
@@ -117,31 +181,41 @@ async def upload_pdf(
             "upload_date": datetime.utcnow().isoformat(),
             "category": category,
             "title": title,
-            "content": extracted_text 
+            "total_pages": total_pages,
+            "file_size": file_size_kb
         }
         
         print("🔹 Inserting into 'documents' table...")
-        data = supabase.table("documents").insert(row_data).execute()
-        print("✅ Document record created.")
+        try:
+            data = supabase.table("documents").insert(row_data).execute()
+        except Exception as insert_error:
+            if "file_size" in str(insert_error) or "total_pages" in str(insert_error) or "PGRST204" in str(insert_error):
+                print(f"⚠️ Metadata columns missing in Supabase. Falling back to basic insert. Error: {insert_error}")
+                # Fallback: Remove metadata fields and try again
+                basic_row_data = {
+                    "filename": file.filename,
+                    "file_path": public_url,
+                    "upload_date": datetime.utcnow().isoformat(),
+                    "category": category,
+                    "title": title
+                }
+                data = supabase.table("documents").insert(basic_row_data).execute()
+            else:
+                raise insert_error
         
         document_id = None
         if hasattr(data, 'data') and len(data.data) > 0:
             document_id = data.data[0]['id']
+            print(f"✅ Document inserted successfully. ID: {document_id}")
         else:
-            # Fallback: try to fetch the document we just inserted if response is weird
-            print("⚠️ Document ID not returned directly, attempting fetch...")
-            try:
-                # This fallback might not be perfect but helps if return is empty
-                pass 
-            except:
-                pass
+            print("❌ ERROR: Document ID not returned from Supabase.")
 
-        # 8. Process PDF & Store Chunks (Extracted Function)
-        if document_id and extracted_text:
+        # 8. Process PDF & Store Chunks
+        if document_id and pages_content:
             print(f"🔹 Starting chunk processing for document_id: {document_id}")
-            await process_pdf_and_store_chunks(document_id, extracted_text)
+            await process_pdf_and_store_chunks(document_id, pages_content)
         else:
-            print("⚠️ Skipping chunking: Missing document_id or extracted_text")
+            print("⚠️ Skipping chunking: Missing document_id or pages_content")
 
         # 9. Create Notification
         try:
@@ -155,7 +229,6 @@ async def upload_pdf(
             supabase.table("notifications").insert(notification_data).execute()
             print("✅ Notification created.")
         except Exception as notif_error:
-            # We catch this so it doesn't fail the upload even if notifications table is missing
             print(f"⚠️ Failed to create notification (non-critical): {notif_error}")
         
         print("🎉 Upload Process Complete.")
@@ -175,42 +248,57 @@ async def upload_pdf(
 
     except Exception as e:
         print(f"❌ Upload Critical Error: {str(e)}")
-        # Even on error, we might want to return a 500 but structured
         raise HTTPException(
             status_code=500, 
             detail=f"Upload failed: {str(e)}"
         )
 
-async def process_pdf_and_store_chunks(document_id: str, text: str):
+async def process_pdf_and_store_chunks(document_id: int, pages_content: list):
     """
-    Chunks the text, generates embeddings, and stores them in Supabase.
+    Chunks the text page-by-page, generates embeddings, and stores them in Supabase 
+    with core metadata (document_id, page_number, chunk_index).
     """
     try:
-        chunks = chunk_text(text)
-        print(f"🔹 Processing {len(chunks)} chunks for document {document_id}...")
-        
         supabase = get_supabase()
-        chunk_rows = []
         
+        print(f"🔹 Processing chunks for document {document_id} across {len(pages_content)} pages...")
+
+        # Prepare all chunks with metadata first
+        all_chunks_data = []
+        global_chunk_idx = 0
+        for page_data in pages_content:
+            text = page_data["text"]
+            page_num = page_data["page_number"]
+            chunks = chunk_text(text)
+            for chunk in chunks:
+                all_chunks_data.append({
+                    "text": chunk,
+                    "page_number": page_num,
+                    "chunk_index": global_chunk_idx
+                })
+                global_chunk_idx += 1
+
         # Process embeddings in parallel
         semaphore = asyncio.Semaphore(5) 
         
-        async def process_single_chunk(chunk):
+        async def process_single_chunk(chunk_item):
              async with semaphore:
                 try:
                     # Run synchronous generate_embedding in a thread
-                    embedding = await asyncio.to_thread(generate_embedding, chunk)
+                    embedding = await asyncio.to_thread(generate_embedding, chunk_item["text"])
                     return {
                         "document_id": document_id, 
-                        "content": chunk,
-                        "embedding": embedding
+                        "content": chunk_item["text"],
+                        "embedding": embedding,
+                        "page_number": chunk_item["page_number"],
+                        "chunk_index": chunk_item["chunk_index"]
                     }
                 except Exception as e:
-                    print(f"❌ Embedding generation failed for chunk: {e}")
+                    print(f"❌ Embedding generation failed for chunk {chunk_item['chunk_index']}: {e}")
                     return None
 
         # Gather all embeddings
-        tasks = [process_single_chunk(chunk) for chunk in chunks]
+        tasks = [process_single_chunk(c) for c in all_chunks_data]
         results = await asyncio.gather(*tasks)
         
         # Filter out failed ones
@@ -228,7 +316,7 @@ async def process_pdf_and_store_chunks(document_id: str, text: str):
             batch = chunk_rows[i:i + batch_size]
             try:
                 supabase.table("document_chunks").insert(batch).execute()
-                print(f"   - Batch {i//batch_size + 1} inserted.")
+                print(f"   ✅ Batch {i//batch_size + 1} ({len(batch)} chunks) inserted successfully.")
             except Exception as batch_error:
                 print(f"❌ Batch insertion failed: {batch_error}")
 

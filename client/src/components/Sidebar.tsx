@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   UploadCloud,
@@ -18,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 
+// Navigation Items
 const NAV_ITEMS = [
   { icon: Home, label: "Home", href: "/" },
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -78,21 +80,29 @@ export function Sidebar({ className, onClose, onToggle }: SidebarProps) {
             <Link key={item.href} href={item.href} onClick={onClose}>
               <div
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 cursor-pointer group",
+                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 cursor-pointer group relative overflow-hidden",
                   isActive
-                    ? "bg-primary/10 text-primary border border-primary/30 shadow-[0_0_15px_rgba(0,255,136,0.15)]"
+                    ? "bg-primary/20 text-primary border border-primary/40 shadow-[0_0_20px_rgba(0,255,136,0.25)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-white"
                 )}
               >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeNav"
+                    className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent pointer-events-none"
+                    initial={{ x: -100 }}
+                    animate={{ x: 0 }}
+                  />
+                )}
                 <item.icon
                   className={cn(
-                    "w-5 h-5 transition-transform duration-300 group-hover:scale-110",
-                    isActive && "animate-pulse"
+                    "w-5 h-5 transition-transform duration-300 group-hover:scale-110 relative z-10",
+                    isActive && "text-primary filter drop-shadow-[0_0_8px_rgba(0,255,136,0.6)]"
                   )}
                 />
-                <span className="font-medium">{item.label}</span>
+                <span className="font-medium relative z-10">{item.label}</span>
                 {isActive && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(0,255,136,0.8)]" />
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_12px_rgba(0,255,136,1)] relative z-10" />
                 )}
               </div>
             </Link>
@@ -103,7 +113,6 @@ export function Sidebar({ className, onClose, onToggle }: SidebarProps) {
       <div className="p-4 border-t border-white/5 mt-auto relative">
         {showUserMenu && (
           <div className="absolute bottom-full left-4 right-4 mb-2 bg-[#1A1F2B] border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
-            {/* User Details Section */}
             <div className="px-4 py-3 border-b border-white/5 bg-white/5">
               <p className="text-xs text-zinc-400 uppercase tracking-wider font-bold mb-1">Signed in as</p>
               <p className="text-sm font-medium text-white truncate">{user?.displayName || "User"}</p>
@@ -152,7 +161,6 @@ export function Sidebar({ className, onClose, onToggle }: SidebarProps) {
           </div>
           <div className="text-left flex-1 min-w-0">
             <p className="text-sm font-bold text-white truncate font-rajdhani">{user?.displayName || "Admin User"}</p>
-            {/* Email intentionally hidden as per request */}
           </div>
           <ChevronUp className={cn("w-4 h-4 text-muted-foreground transition-transform duration-300", showUserMenu && "rotate-180")} />
         </button>

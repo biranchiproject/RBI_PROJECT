@@ -1,11 +1,15 @@
 fastapi
 uvicorn
-supabase
+supabase>=2.3.0
 python-dotenv
 pydantic
 sentence-transformers
 torch
 pymupdf
+pdfplumber
+pypdf
+groq
 python-multipart
 requests
 httpx
+websockets>=13.0

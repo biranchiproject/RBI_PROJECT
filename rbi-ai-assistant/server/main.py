@@ -35,22 +35,39 @@ def read_root():
 def get_analytics():
     try:
         supabase = get_supabase()
-        # count='exact' allows getting the count without data if head=True, but here we want data too?
-        # Actually the simplified logic previously used:
-        response = supabase.table("documents").select("*", count="exact").execute()
-        count = response.count if response.count is not None else len(response.data)
-    except:
-        count = 0
+        response = supabase.table("documents").select("*").execute()
+        docs = response.data or []
         
-    return {
-        "total_documents": count,
-        "categories": [
-            {"name": "Notifications", "count": 12, "color": "#10B981"},
-            {"name": "Master Directions", "count": 8, "color": "#3B82F6"},
-            {"name": "Circulars", "count": 24, "color": "#F59E0B"},
-            {"name": "Guidelines", "count": 5, "color": "#EF4444"}
-        ]
-    }
+        # Calculate Category Stats
+        category_counts = {}
+        total_pages = 0
+        for doc in docs:
+            cat = doc.get("category", "General")
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+            total_pages += doc.get("total_pages", 0) or 0
+
+        # Format for frontend
+        categories = []
+        colors = ["#00FF88", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"]
+        for i, (name, count) in enumerate(category_counts.items()):
+            categories.append({
+                "name": name,
+                "count": count,
+                "color": colors[i % len(colors)]
+            })
+
+        return {
+            "total_documents": len(docs),
+            "total_pages": total_pages,
+            "categories": categories
+        }
+    except Exception as e:
+        print(f"Analytics Error: {e}")
+        return {
+            "total_documents": 0,
+            "total_pages": 0,
+            "categories": []
+        }
 
 @app.get("/api/queries")
 def get_queries():

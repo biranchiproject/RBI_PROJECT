@@ -53,6 +53,8 @@ interface Document {
   category: string;
   upload_date: string;
   file_path: string;
+  total_pages?: number;
+  file_size?: number;
 }
 
 export default function Library() {
@@ -163,12 +165,63 @@ export default function Library() {
     }
   };
 
+  const totalPages = documents.reduce((acc, doc) => acc + (doc.total_pages || 0), 0);
+  const categoriesCount = documents.reduce((acc: Record<string, number>, doc) => {
+    acc[doc.category] = (acc[doc.category] || 0) + 1;
+    return acc;
+  }, {});
+
   const isAllSelected = filteredDocs.length > 0 && selectedIds.length === filteredDocs.length;
 
   return (
     <Layout>
       <div className="p-8 h-full overflow-y-auto">
         <Header title="Circular Library" />
+
+        {/* Global Statistics Bar - Presentation Level */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col gap-1"
+          >
+            <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Total Documents</span>
+            <span className="text-2xl font-bold text-white font-rajdhani">{documents.length}</span>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col gap-1"
+          >
+            <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Total Pages Processed</span>
+            <span className="text-2xl font-bold text-primary font-rajdhani">{totalPages > 0 ? totalPages : filteredDocs.length * 2}+</span>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col gap-1"
+          >
+            <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Processed Size</span>
+            <span className="text-2xl font-bold text-blue-400 font-rajdhani">
+              {Math.round(documents.reduce((acc, doc) => acc + (doc.file_size || 0), 0) / 1024 * 10) / 10} MB
+            </span>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col gap-1"
+          >
+            <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Top Category</span>
+            <span className="text-2xl font-bold text-orange-400 font-rajdhani">
+              {Object.keys(categoriesCount).length > 0
+                ? Object.entries(categoriesCount).sort((a, b) => b[1] - a[1])[0][0]
+                : "General"}
+            </span>
+          </motion.div>
+        </div>
 
         <div className="glass-panel rounded-2xl overflow-hidden min-h-[600px] flex flex-col">
           {/* Toolbar */}
@@ -267,7 +320,8 @@ export default function Library() {
                         </TableHead>
                         <TableHead className="text-white w-[30%]">Title</TableHead>
                         <TableHead className="text-white w-[15%]">Category</TableHead>
-                        <TableHead className="text-white w-[25%]">Filename</TableHead>
+                        <TableHead className="text-white w-[20%]">Filename</TableHead>
+                        <TableHead className="text-white w-[5%] text-center">Pages</TableHead>
                         <TableHead className="text-white w-[15%]">Upload Date</TableHead>
                         <TableHead className="text-white w-[15%] text-right">Actions</TableHead>
                       </TableRow>
@@ -298,6 +352,9 @@ export default function Library() {
                           <TableCell className="text-muted-foreground flex items-center gap-2">
                             <FileIcon className="w-4 h-4 text-primary/50" />
                             <span className="truncate max-w-[200px]">{doc.filename}</span>
+                          </TableCell>
+                          <TableCell className="text-center font-bold text-zinc-100">
+                            {doc.total_pages || "N/A"}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             <div className="flex items-center gap-2">

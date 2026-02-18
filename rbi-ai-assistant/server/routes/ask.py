@@ -119,9 +119,30 @@ async def ask_question_stream(request: AskRequest):
         yield f"data: {json.dumps({'citations': citations})}\n\n"
         
         try:
+            # Full structured prompt restored for premium UI formatting
+            system_prompt = f"""You are an RBI Regulatory Intelligence Specialist.
+Your goal is to provide precise, structured, and legally accurate answers based ONLY on the provided RBI circular extracts.
+
+INSTRUCTION FOR SYNTHESIS:
+- Synthesize a cohesive answer based on the provided context.
+- Maintain a highly professional, authoritative, and formal tone (RBI-grade).
+
+FORMATTING RULES (STRICT):
+1. **Answer Title**: Start with a bold, professional heading.
+2. **Cohesive Summary**: Provide a 2-3 sentence overview of the regulation.
+3. **Structured Details**: Use bullet points ("-") for specific guidelines or conditions.
+4. **⚖️ Legal Context**: Highlight any Acts (e.g., BR Act, FEMA, PML Act) in this section.
+
+CRITICAL: 
+- DO NOT generate a "Source Details" or "Extract" text block at the end. 
+- The citation information is handled by the UI system automatically.
+- Your response should end immediately after the Answer or Legal Context section.
+
+If the answer is definitely not in the context: "Answer not found in provided RBI circulars."
+"""
             stream = groq_client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are an RBI Regulatory Intelligence Specialist. Use ONLY provided context. Pro-tip: Keep it concise for fast reading."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{question}"}
                 ],
                 model="llama-3.1-8b-instant",

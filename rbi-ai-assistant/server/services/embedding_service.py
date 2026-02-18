@@ -1,16 +1,18 @@
-from sentence_transformers import SentenceTransformer
 import asyncio
 from typing import Optional
 
 # Global model instance
-_model: Optional[SentenceTransformer] = None
+_model: Optional[object] = None # Using object to avoid eager import type check
 
 def get_model():
     """
     Lazy loads the SentenceTransformer model to ensure fast server startup.
+    This prevents Render health check timeouts by moving the 
+    heavy import and model loading into the first request.
     """
     global _model
     if _model is None:
+        from sentence_transformers import SentenceTransformer
         print("🧠 Loading SentenceTransformer model...")
         _model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         print("✅ Model loaded successfully.")

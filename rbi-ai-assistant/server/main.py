@@ -10,7 +10,9 @@ from typing import List, Optional
 # Load environment variables
 load_dotenv()
 
+print("🚀 Starting RBI AI Backend...")
 app = FastAPI()
+print("✅ FastAPI Instance Created")
 
 # CORS Middleware
 app.add_middleware(

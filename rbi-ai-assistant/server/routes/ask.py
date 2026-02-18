@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Body
+from fastapi.responses import StreamingResponse
 from services.supabase_client import get_supabase
 from pydantic import BaseModel
 from services.embedding_service import generate_embedding
 from groq import Groq
 import os
 import json
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,6 +29,116 @@ else:
 class AskRequest(BaseModel):
     question: str
 
+@router.post("/ask/stream")
+async def ask_question_stream(request: AskRequest):
+    if not groq_client:
+        raise HTTPException(status_code=503, detail="AI services not available. Check API keys.")
+
+    question = request.question
+    
+    # 1. Embed and Search (Reuse optimized logic)
+    question_embedding = generate_embedding(question)
+    supabase = get_supabase()
+    
+    try:
+        rpc_res = supabase.rpc("match_documents", {
+            "query_embedding": question_embedding,
+            "match_threshold": 0.20,
+            "match_count": 10
+        }).execute()
+        initial_hits = rpc_res.data or []
+    except Exception as e:
+        print(f"❌ Search failed: {e}")
+        initial_hits = []
+
+    if not initial_hits:
+        async def empty_gen():
+            yield f"data: {json.dumps({'answer': 'Answer not found in provided RBI circulars.', 'citations': []})}\n\n"
+        return StreamingResponse(empty_gen(), media_type="text/event-stream")
+
+    # Batch context expansion
+    final_context_chunks = []
+    doc_meta_map = {}
+    try:
+        involved_doc_ids = list(set(hit.get('document_id') for hit in initial_hits if hit.get('document_id')))
+        if involved_doc_ids:
+            # Parallel fetch would be better, but sequential for now is already fast
+            chunks_res = supabase.table("document_chunks") \
+                .select("id, content, chunk_index, document_id, page_number") \
+                .in_("document_id", involved_doc_ids) \
+                .execute()
+            
+            doc_res = supabase.table("documents").select("*").in_("id", involved_doc_ids).execute()
+            
+            if chunks_res.data:
+                chunk_map = {(c['document_id'], c['chunk_index']): c for c in chunks_res.data}
+                dedup_keys = set()
+                for hit in initial_hits:
+                    doc_id, idx = hit.get('document_id'), hit.get('chunk_index')
+                    if doc_id and idx is not None:
+                        for i in [idx - 1, idx, idx + 1]:
+                            if i < 0: continue
+                            key = (doc_id, i)
+                            if key in chunk_map and key not in dedup_keys:
+                                c_data = chunk_map[key]
+                                c_data['similarity'] = hit.get('similarity', 0) if i == idx else hit.get('similarity', 0) * 0.9
+                                final_context_chunks.append(c_data)
+                                dedup_keys.add(key)
+            if doc_res.data:
+                doc_meta_map = {d['id']: d for d in doc_res.data}
+    except Exception as e:
+        print(f"⚠️ Batch expansion failed: {e}")
+        final_context_chunks = initial_hits
+
+    # Build context and citations
+    context_parts = []
+    citations = []
+    cited_pages = set()
+    for c in final_context_chunks:
+        doc_id = c.get('document_id')
+        meta = doc_meta_map.get(doc_id, {})
+        meta_header = f"📄 Document: {meta.get('title', 'Unknown')} | Page: {c.get('page_number', 'N/A')}"
+        context_parts.append(f"{meta_header}\nContent: {c.get('content', '')}\n---")
+        
+        page_key = f"{doc_id}_{c.get('page_number', 'N/A')}"
+        if page_key not in cited_pages:
+            citations.append({
+                "title": meta.get('title', 'Unknown'),
+                "filename": meta.get('filename', 'Unknown'),
+                "category": meta.get('category', 'General'),
+                "page_number": c.get('page_number', 'N/A'),
+                "upload_date": str(meta.get('upload_date', '')).split("T")[0],
+                "extract": c.get('content', '')
+            })
+            cited_pages.add(page_key)
+
+    context_text = "\n".join(context_parts)
+    
+    async def stream_generator():
+        # First send the citations
+        yield f"data: {json.dumps({'citations': citations})}\n\n"
+        
+        try:
+            stream = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are an RBI Regulatory Intelligence Specialist. Use ONLY provided context. Pro-tip: Keep it concise for fast reading."},
+                    {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{question}"}
+                ],
+                model="llama-3.1-8b-instant",
+                temperature=0.0,
+                max_tokens=1024,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield f"data: {json.dumps({'text': chunk.choices[0].delta.content})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
 @router.post("/ask")
 async def ask_question(request: AskRequest):
     if not groq_client:
@@ -34,35 +146,9 @@ async def ask_question(request: AskRequest):
 
     question = request.question
     
-    # NEW: Analyze Query Intent for Hybrid Filtering
+    # Remove redundant intent analysis for speed
+    # Intent analysis can be handled by the main LLM call with context
     intent = {"category": None, "amount": None, "topic": None}
-    try:
-        print(f"🧠 Analyzing intent for: '{question}'")
-        intent_prompt = f"""
-        Analyze the following RBI query and extract metadata filters in JSON format.
-        Focus on:
-        - "category": (e.g., NBFC, Bank, Lending, KYC, Fintech)
-        - "amount": (any specific numeric limits mentioned)
-        - "topic": (core theme)
-
-        Return ONLY JSON.
-        Example Question: "What are the rules for NBFCs over 50,000?"
-        Result: {{"category": "NBFC", "amount": "50,000", "topic": "rules"}}
-
-        Question: "{question}"
-        Result:"""
-        
-        intent_res = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": intent_prompt}],
-            model="llama-3.1-8b-instant",
-            temperature=0.0,
-            max_tokens=100,
-            response_format={"type": "json_object"}
-        )
-        intent = json.loads(intent_res.choices[0].message.content)
-        print(f"📊 Extracted Intent: {intent}")
-    except Exception as e:
-        print(f"⚠️ Intent analysis failed (using default): {e}")
 
     # 1. Embed Question
     try:
@@ -72,89 +158,81 @@ async def ask_question(request: AskRequest):
         print(f"Embedding error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate embedding.")
 
-    # 2. Vector Search with Dynamic Tiering
+    # 2. Optimized Vector Search
     supabase = get_supabase()
     
-    # Tiered Threshold Search for maximum reliability
-    # High: 0.60 | Medium: 0.40 | Low: 0.20
-    threshold_tiers = [
-        {"thresh": 0.60, "count": 3}, # High confidence, small specific hits
-        {"thresh": 0.40, "count": 5}, # Medium confidence, standard context
-        {"thresh": 0.20, "count": 7}  # Low confidence, broad context
-    ]
-
-    initial_chunks = []
+    # Use a single call with a lower threshold and reasonable limit
+    # We sort by similarity in-memory for finer control if needed
     try:
-        current_data = []
-        for tier in threshold_tiers:
-            thresh = tier["thresh"]
-            count = tier["count"]
-            print(f"🔍 Searching with threshold: {thresh}...")
-            rpc_res = supabase.rpc("match_documents", {
-                "query_embedding": question_embedding,
-                "match_threshold": thresh,
-                "match_count": count
-            }).execute()
-            
-            if rpc_res.data:
-                current_data = rpc_res.data
-                print(f"✅ Found {len(current_data)} hits at {thresh} threshold.")
-                break 
-            else:
-                print(f"⚠️ No results at {thresh} threshold.")
-        initial_chunks = current_data
-    except Exception as e:
-        print(f"❌ Initial vector search failed: {e}")
-        initial_chunks = []
-
-    # 3. Context Expansion (Fetch Neighbors)
-    final_context_chunks = []
-    if initial_chunks:
-        print(f"🧠 Expanding context for {len(initial_chunks)} hits...")
-        expanded_chunk_ids = set()
+        print(f"🔍 Searching with 0.20 threshold...")
+        rpc_res = supabase.rpc("match_documents", {
+            "query_embedding": question_embedding,
+            "match_threshold": 0.20,
+            "match_count": 10
+        }).execute()
         
-        for hit in initial_chunks:
+        initial_hits = rpc_res.data or []
+        print(f"✅ Found {len(initial_hits)} raw hits.")
+    except Exception as e:
+        print(f"❌ Vector search failed: {e}")
+        initial_hits = []
+
+    if not initial_hits:
+        return {"answer": "Answer not found in provided RBI circulars.", "citations": []}
+
+    # 3. Batch Context Expansion (Fetch all neighbors in one query)
+    final_context_chunks = []
+    try:
+        # Collect IDs and indices
+        search_targets = []
+        for hit in initial_hits:
             doc_id = hit.get('document_id')
             idx = hit.get('chunk_index')
-            if doc_id is None or idx is None:
-                final_context_chunks.append(hit)
-                continue
+            if doc_id and idx is not None:
+                # Add range [idx-1, idx, idx+1]
+                search_targets.append((doc_id, idx))
+        
+        if search_targets:
+            # Prepare a list of OR conditions or just fetch all chunks for these documents
+            # For simplicity and performance, we fetch chunks in the specific index ranges
+            # Build a filter for (doc_id, chunk_index)
+            # Since Supabase Python client doesn't support complex tuples easily, 
+            # we'll fetch all chunks for the involved documents and filter in memory
+            # OR better: run a specific batch query if many docs, but usually it's 1-3 docs.
+            
+            involved_doc_ids = list(set(d for d, i in search_targets))
+            print(f"🧠 Batch fetching neighbors for {len(involved_doc_ids)} documents...")
+            
+            # Fetch all potentially relevant chunks in one go
+            all_chunks_res = supabase.table("document_chunks") \
+                .select("id, content, chunk_index, document_id, page_number") \
+                .in_("document_id", involved_doc_ids) \
+                .execute()
+            
+            if all_chunks_res.data:
+                # Group by doc_id and chunk_index for fast lookup
+                chunk_map = {}
+                for c in all_chunks_res.data:
+                    chunk_map[(c['document_id'], c['chunk_index'])] = c
                 
-            # Fetch context window: [idx-1, idx, idx+1]
-            try:
-                window_res = supabase.table("document_chunks") \
-                    .select("id, content, chunk_index, document_id, page_number") \
-                    .eq("document_id", doc_id) \
-                    .gte("chunk_index", max(0, idx - 1)) \
-                    .lte("chunk_index", idx + 1) \
-                    .execute()
-                
-                if window_res.data:
-                    for w_chunk in window_res.data:
-                        # Use document_id + chunk_index as a unique key for deduplication
-                        unique_key = f"{doc_id}_{w_chunk['chunk_index']}"
-                        if unique_key not in expanded_chunk_ids:
-                            # Attach similarity for sorting if it's the primary hit
-                            if w_chunk['chunk_index'] == idx:
-                                w_chunk['similarity'] = hit.get('similarity', 0)
-                            else:
-                                w_chunk['similarity'] = hit.get('similarity', 0) * 0.9 # Slightly lower weight for context
-                            
-                            final_context_chunks.append(w_chunk)
-                            expanded_chunk_ids.add(unique_key)
-            except Exception as e:
-                print(f"⚠️ Neighbor fetch failed for doc {doc_id} idx {idx}: {e}")
-                final_context_chunks.append(hit)
-
-        # Sort by document then index for logical merging
-        final_context_chunks.sort(key=lambda x: (x.get('document_id', ''), x.get('chunk_index', 0)))
-        print(f"✅ Context window expanded to {len(final_context_chunks)} logical units.")
-    else:
-        print("⚠️ No chunks found. Returning 'Answer not found'.")
-        return {
-            "answer": "Answer not found in provided RBI circulars.",
-            "citations": []
-        }
+                dedup_keys = set()
+                for d_id, idx in search_targets:
+                    # Original hit similarity for boosting calculation
+                    orig_similarity = next((h.get('similarity', 0) for h in initial_hits if h['document_id'] == d_id and h['chunk_index'] == idx), 0)
+                    
+                    for i in [idx - 1, idx, idx + 1]:
+                        if i < 0: continue
+                        key = (d_id, i)
+                        if key in chunk_map and key not in dedup_keys:
+                            chunk_data = chunk_map[key]
+                            chunk_data['similarity'] = orig_similarity if i == idx else orig_similarity * 0.9
+                            final_context_chunks.append(chunk_data)
+                            dedup_keys.add(key)
+        else:
+            final_context_chunks = initial_hits
+    except Exception as e:
+        print(f"⚠️ Batch expansion failed: {e}")
+        final_context_chunks = initial_hits
 
     # 4. Meta-Metadata Pre-fetching & Citation Building
     doc_meta_map = {}

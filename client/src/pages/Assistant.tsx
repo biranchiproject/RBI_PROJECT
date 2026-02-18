@@ -266,12 +266,12 @@ export default function Assistant() {
     ]);
 
     try {
-      let response;
       if (currentFile) {
+        // File handling (existing logic)
         const formData = new FormData();
         formData.append("query", userQuery);
         formData.append("file", currentFile);
-        response = await fetch(`${API_BASE_URL}/api/chat`, { method: "POST", body: formData });
+        const response = await fetch(`${API_BASE_URL}/api/chat`, { method: "POST", body: formData });
         const data = await response.json();
         setMessages(prev => {
           const newMsg = [...prev];
@@ -281,20 +281,56 @@ export default function Assistant() {
           return newMsg;
         });
       } else {
-        response = await fetch(`${API_BASE_URL}/api/ask`, {
+        // Enhanced Streaming Logic
+        const response = await fetch(`${API_BASE_URL}/api/ask/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: userQuery })
         });
+
         if (!response.ok) throw new Error("Server error");
-        const data = await response.json();
-        setMessages(prev => {
-          const newMsg = [...prev];
-          const lastIndex = newMsg.length - 1;
-          newMsg[lastIndex].text = data.answer || data.reply || "No response received.";
-          newMsg[lastIndex].citations = data.citations || [];
-          return newMsg;
-        });
+        if (!response.body) throw new Error("No response body");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === "[DONE]") break;
+
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.citations) {
+                  setMessages(prev => {
+                    const newMsg = [...prev];
+                    newMsg[newMsg.length - 1].citations = data.citations;
+                    return newMsg;
+                  });
+                }
+                if (data.text) {
+                  fullText += data.text;
+                  setMessages(prev => {
+                    const newMsg = [...prev];
+                    newMsg[newMsg.length - 1].text = fullText;
+                    return newMsg;
+                  });
+                }
+                if (data.error) throw new Error(data.error);
+              } catch (e) {
+                console.warn("Stream parse error:", e);
+              }
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Chat Error:", error);

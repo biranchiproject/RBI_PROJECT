@@ -11,11 +11,17 @@ load_dotenv()
 router = APIRouter()
 
 # Clients
-try:
-    # Initialize Groq for LLaMA generation
-    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-except Exception as e:
-    print(f"Client Init Error: {e}")
+api_key = os.getenv("GROQ_API_KEY")
+if api_key:
+    try:
+        # Initialize Groq for LLaMA generation
+        groq_client = Groq(api_key=api_key)
+        print("✅ Groq Client initialized successfully.")
+    except Exception as e:
+        print(f"❌ Groq Init Error: {e}")
+        groq_client = None
+else:
+    print("⚠️ WARNING: GROQ_API_KEY is missing in environment variables.")
     groq_client = None
 
 class AskRequest(BaseModel):

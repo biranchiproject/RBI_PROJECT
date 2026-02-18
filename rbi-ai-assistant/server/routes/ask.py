@@ -128,10 +128,10 @@ INSTRUCTION FOR SYNTHESIS:
 - Maintain a highly professional, authoritative, and formal tone (RBI-grade).
 
 FORMATTING RULES (STRICT):
-1. **Answer Title**: Start with a bold, professional heading.
-2. **Cohesive Summary**: Provide a 2-3 sentence overview of the regulation.
-3. **Structured Details**: Use bullet points ("-") for specific guidelines or conditions.
-4. **⚖️ Legal Context**: Highlight any Acts (e.g., BR Act, FEMA, PML Act) in this section.
+1. **[Answer Title]**: Start with a bold, professional heading describing the topic.
+2. **Cohesive Summary**: Start with the label "**Cohesive Summary**" and provide a 2-3 sentence overview.
+3. **Structured Details**: Start with the label "**Structured Details**" and use bullet points ("-") for specific rules.
+4. **⚖️ Legal Context**: Start with the label "**⚖️ Legal Context**" and highlight relevant Acts.
 
 CRITICAL: 
 - DO NOT generate a "Source Details" or "Extract" text block at the end. 
@@ -343,10 +343,10 @@ async def ask_question(request: AskRequest):
     - Maintain a highly professional, authoritative, and formal tone (RBI-grade).
 
     FORMATTING RULES (STRICT):
-    1. **Answer Title**: Start with a bold, professional heading.
-    2. **Cohesive Summary**: Provide a 2-3 sentence overview of the regulation.
-    3. **Structured Details**: Use bullet points ("-") for specific guidelines or conditions.
-    4. **⚖️ Legal Context**: Highlight any Acts (e.g., BR Act, FEMA, PML Act) in this section.
+    1. **[Answer Title]**: Start with a bold, professional heading describing the topic.
+    2. **Cohesive Summary**: Start with the label "**Cohesive Summary**" and provide a 2-3 sentence overview.
+    3. **Structured Details**: Start with the label "**Structured Details**" and use bullet points ("-") for specific rules.
+    4. **⚖️ Legal Context**: Start with the label "**⚖️ Legal Context**" and highlight relevant Acts.
     
     CRITICAL: 
     - DO NOT generate a "Source Details" or "Extract" text block at the end. 

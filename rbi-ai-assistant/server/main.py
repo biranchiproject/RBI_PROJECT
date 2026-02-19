@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import upload, notifications, documents, ask
+from routes import upload, notifications, documents, ask, rbi_updates
 from dotenv import load_dotenv
 import os
 from services.supabase_client import get_supabase
@@ -8,11 +8,19 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 # Load environment variables
-load_dotenv()
+# Load environment variables (Searching up to root)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
+if not os.getenv("GROQ_API_KEY"):
+    load_dotenv() # Fallback to standard
 
-print("🚀 Starting RBI AI Backend...")
+from services.background_tasks import start_background_tasks
+
+print("Starting RBI AI Backend...")
 app = FastAPI()
-print("✅ FastAPI Instance Created")
+print("FastAPI Instance Created")
+
+# Start Background Services
+start_background_tasks()
 
 # CORS Middleware
 app.add_middleware(
@@ -84,6 +92,7 @@ app.include_router(upload.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api/notifications")
 app.include_router(documents.router, prefix="/api")
 app.include_router(ask.router, prefix="/api")
+app.include_router(rbi_updates.router, prefix="/api/rbi-updates", tags=["rbi-updates"])
 
 if __name__ == "__main__":
     import uvicorn

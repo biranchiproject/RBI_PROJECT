@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import Layout from "@/components/Layout";
-import { Send, Bot, User, Mic, Sparkles, RefreshCw, Copy, Check, Paperclip, FileText, X, ArrowDown } from "lucide-react";
+import { Send, Bot, User, Mic, Sparkles, RefreshCw, Copy, Check, Paperclip, FileText, X, ArrowDown, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn, API_BASE_URL } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useAuth } from "@/context/AuthContext";
 
 // Types
 // State Types
@@ -47,11 +48,20 @@ export default function Assistant() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [isVoiceLoading, setIsVoiceLoading] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceReply, setVoiceReply] = useState("");
+  const [isContinuousListening, setIsContinuousListening] = useState(false);
+  const { user } = useAuth();
 
   // Refs
   const chatRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef("");
   const shouldAutoScrollRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -216,30 +226,166 @@ export default function Assistant() {
     };
   }, []);
 
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
+  const startVoiceChat = () => {
+    setIsVoiceModalOpen(true);
+    setVoiceTranscript("");
+    setVoiceReply("");
+    setVoiceError(null);
+    setIsVoiceLoading(false);
+    transcriptRef.current = "";
+
+    // 🏆 Requirement 1: Personalized Greeting
+    const userName = user?.displayName || "User";
+    const greeting = `Hello ${userName}, how can I help you today regarding RBI?`;
+
+    // Speak greeting
+    const utterance = new SpeechSynthesisUtterance(greeting);
+    utterance.lang = 'en-IN';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.warn("Voice input not supported");
+      setVoiceError("Voice recognition not supported in this browser.");
       return;
     }
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
-    recognition.lang = "en-US";
+    recognition.lang = "en-IN";
+
     recognition.onresult = (event: any) => {
       const transcript = Array.from(event.results as any[])
         .map((result: any) => result[0].transcript).join("");
-      setInput(transcript);
+      setVoiceTranscript(transcript);
+      transcriptRef.current = transcript;
     };
-    recognition.onend = () => setIsListening(false);
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech Recognition Error:", event.error);
+      if (event.error !== 'no-speech') {
+        setVoiceError(`Error: ${event.error}`);
+        setIsListening(false);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Automatically submit if we have a transcript
+      if (transcriptRef.current.trim()) {
+        handleVoiceSubmit(transcriptRef.current);
+      } else if (isContinuousListening && isVoiceModalOpen) {
+        // 🏆 Requirement 1: Continuous Listening
+        setTimeout(() => {
+          if (isVoiceModalOpen && !isVoiceLoading) {
+            setIsListening(true);
+            recognition.start();
+          }
+        }, 300);
+      }
+    };
+
     recognition.start();
     setIsListening(true);
     recognitionRef.current = recognition;
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
+  };
+
+  const isQueryRBI = (text: string) => {
+    const keywords = ["rbi", "circular", "category", "fpi", "sebi", "banking", "financial", "regulation", "compliance", "policy"];
+    return keywords.some(kw => text.toLowerCase().includes(kw));
+  };
+
+  const handleVoiceSubmit = async (text: string) => {
+    if (!isQueryRBI(text)) {
+      setVoiceError("This assistant only answers RBI-related questions.");
+      return;
+    }
+
+    setIsVoiceLoading(true);
+    setIsLoading(true);
+    setVoiceError(null);
+
+    // Call existing handleSubmit logic but optimized for voice
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/ask/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: text })
+      });
+
+      if (!response.ok) throw new Error("Server error");
+      if (!response.body) throw new Error("No response body");
+
+      // Add to regular chat history first
+      setMessages(prev => [
+        ...prev,
+        { type: 'user', text: text },
+        { type: 'ai', text: "" }
+      ]);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === "[DONE]") break;
+
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.error) throw new Error(data.error);
+
+              if (data.text) {
+                fullText += data.text;
+                setVoiceReply(fullText);
+
+                // Keep chat messages sync
+                setMessages(prev => {
+                  const newMsg = [...prev];
+                  newMsg[newMsg.length - 1].text = fullText;
+                  if (data.citations) newMsg[newMsg.length - 1].citations = data.citations;
+                  return newMsg;
+                });
+              }
+            } catch (e) {
+              console.warn("Voice stream parse error:", e);
+            }
+          }
+        }
+      }
+
+      // Voice Output handled by useEffect [isLoading] hook already, 
+      // but let's confirm the voiceReply is set for the modal UI
+    } catch (err: any) {
+      setVoiceError(err.message || "Failed to get response");
+    } finally {
+      setIsVoiceLoading(false);
+    }
+  };
+
+  const closeVoiceModal = () => {
+    stopListening();
+    window.speechSynthesis.cancel();
+    setIsVoiceModalOpen(false);
+    setVoiceTranscript("");
+    setVoiceReply("");
+    setVoiceError(null);
   };
 
   // Submit Handler
@@ -309,22 +455,26 @@ export default function Assistant() {
 
               try {
                 const data = JSON.parse(dataStr);
-                if (data.citations) {
-                  setMessages(prev => {
-                    const newMsg = [...prev];
-                    newMsg[newMsg.length - 1].citations = data.citations;
-                    return newMsg;
-                  });
-                }
-                if (data.text) {
-                  fullText += data.text;
-                  setMessages(prev => {
-                    const newMsg = [...prev];
-                    newMsg[newMsg.length - 1].text = fullText;
-                    return newMsg;
-                  });
-                }
+
                 if (data.error) throw new Error(data.error);
+
+                setMessages(prev => {
+                  const newMsg = [...prev];
+                  const lastIdx = newMsg.length - 1;
+                  const currentMsg = { ...newMsg[lastIdx] };
+
+                  if (data.citations) {
+                    currentMsg.citations = data.citations;
+                  }
+
+                  if (data.text) {
+                    fullText += data.text;
+                    currentMsg.text = fullText;
+                  }
+
+                  newMsg[lastIdx] = currentMsg;
+                  return newMsg;
+                });
               } catch (e) {
                 console.warn("Stream parse error:", e);
               }
@@ -343,6 +493,37 @@ export default function Assistant() {
       setIsLoading(false);
     }
   };
+
+  // 5️⃣ Text-to-Speech logic
+  const speakText = (text: string) => {
+    if (!isVoiceEnabled) return;
+
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    // Clean text (remove markdown symbols)
+    const cleanText = text
+      .replace(/[#*`_~]/g, '')
+      .replace(/\[.*?\]\(.*?\)/g, '')
+      .split(/Source Details|📎|📍/)[0]; // Don't speak technical details
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.lang = "en-IN"; // Indian English for RBI context
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Trigger speech when messages update (only for the last AI message if streaming just finished)
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.type === 'ai' && lastMsg.text) {
+        speakText(lastMsg.text);
+      }
+    }
+  }, [isLoading]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -481,10 +662,37 @@ export default function Assistant() {
                 <span className="text-white font-bold tracking-tight">Financial Assistant</span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setMessages([])} className="text-zinc-400 hover:text-white hover:bg-white/5 text-xs h-8">
-              <RefreshCw className="w-3.5 h-3.5 mr-2" />
-              Clear
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={startVoiceChat}
+                className="relative group flex items-center gap-2 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 px-4 py-1.5 rounded-full text-xs font-bold transition-all overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-green-500/10 animate-pulse-slow opacity-0 group-hover:opacity-100" />
+                <Mic className="w-3.5 h-3.5" />
+                <span>Use Voice</span>
+                <div className="flex gap-1 items-center ml-1">
+                  <div className="w-1 h-3 bg-green-500/40 rounded-full animate-[bounce_1s_infinite]" />
+                  <div className="w-1 h-2 bg-green-500/40 rounded-full animate-[bounce_1.2s_infinite]" />
+                  <div className="w-1 h-4 bg-green-500/40 rounded-full animate-[bounce_0.8s_infinite]" />
+                </div>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (isVoiceEnabled) window.speechSynthesis.cancel();
+                  setIsVoiceEnabled(!isVoiceEnabled);
+                }}
+                className={cn("text-xs h-8", isVoiceEnabled ? "text-green-500 bg-green-500/10" : "text-zinc-400")}
+              >
+                {isVoiceEnabled ? <Volume2 className="w-3.5 h-3.5 mr-2" /> : <VolumeX className="w-3.5 h-3.5 mr-2" />}
+                Voice {isVoiceEnabled ? "On" : "Off"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setMessages([])} className="text-zinc-400 hover:text-white hover:bg-white/5 text-xs h-8">
+                <RefreshCw className="w-3.5 h-3.5 mr-2" />
+                Clear
+              </Button>
+            </div>
           </div>
 
           {/* Messages Area */}
@@ -559,13 +767,13 @@ export default function Assistant() {
                                     </div>
                                     <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:text-zinc-300">
                                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                        {msg.text.split(/⚖️ Legal Context|Legal Context:/)[0].trim()}
+                                        {msg.text.split(/⚖️ Legal Context|Legal Context:/i)[0].replace(/\*\*⚖️ Legal Context\*\*/g, '').trim()}
                                       </ReactMarkdown>
                                     </div>
                                   </div>
 
                                   {/* 4️⃣ Legal Context Section (if present) */}
-                                  {(msg.text.includes("⚖️ Legal Context") || msg.text.includes("Legal Context:")) && (
+                                  {(msg.text.toLowerCase().includes("legal context")) && (
                                     <div className="bg-zinc-900/40 border border-white/5 rounded-2xl p-6 shadow-sm mb-4">
                                       <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-3">
                                         <span className="text-lg">⚖️</span>
@@ -573,7 +781,7 @@ export default function Assistant() {
                                       </div>
                                       <div className="text-zinc-300 text-[14px] leading-relaxed italic">
                                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                          {msg.text.split(/⚖️ Legal Context|Legal Context:/)[1]?.split("Source:")[0]?.trim() || ""}
+                                          {msg.text.split(/⚖️ Legal Context|Legal Context:/i)[1]?.trim() || "No specific Acts mentioned in the provided context."}
                                         </ReactMarkdown>
                                       </div>
                                     </div>
@@ -587,8 +795,8 @@ export default function Assistant() {
                                         <h4 className="text-[15px] font-bold text-zinc-100 mt-0 mb-0 uppercase tracking-wider">Source Details</h4>
                                       </div>
                                       <div className="flex flex-col gap-4">
-                                        {msg.citations.slice(0, 1).map((cite, cidx) => (
-                                          <div key={cidx} className="flex flex-col gap-4">
+                                        {msg.citations.map((cite, cidx) => (
+                                          <div key={cidx} className={cn("flex flex-col gap-4 pt-4 first:pt-0", cidx > 0 && "border-t border-white/5")}>
                                             {/* Relevant Extract Section */}
                                             {cite.extract && (
                                               <div className="space-y-2">
@@ -603,14 +811,14 @@ export default function Assistant() {
                                             )}
 
                                             {/* Metadata Grid */}
-                                            <div className="grid grid-cols-1 gap-2 text-[13px]">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
                                               <div className="flex items-start gap-2">
                                                 <span className="text-zinc-500 shrink-0 font-medium">📄 Document Title:</span>
-                                                <span className="text-zinc-100 font-bold">{cite.title}</span>
+                                                <span className="text-zinc-100 font-bold truncate">{cite.title}</span>
                                               </div>
                                               <div className="flex items-start gap-2">
                                                 <span className="text-zinc-500 shrink-0 font-medium">📁 Filename:</span>
-                                                <span className="text-zinc-300 whitespace-pre-wrap break-all">{cite.filename}</span>
+                                                <span className="text-zinc-300 truncate">{cite.filename}</span>
                                               </div>
                                               <div className="flex items-start gap-2">
                                                 <span className="text-zinc-500 shrink-0 font-medium">🏷 Category:</span>
@@ -668,9 +876,6 @@ export default function Assistant() {
                 <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="rounded-lg h-9 w-9 shrink-0 text-zinc-400 hover:text-white hover:bg-white/5">
                   <Paperclip className="w-4 h-4" />
                 </Button>
-                <Button type="button" variant="ghost" size="icon" onClick={toggleListening} className={cn("rounded-lg h-9 w-9 shrink-0", isListening ? "text-red-500 animate-pulse bg-red-500/10" : "text-zinc-400 hover:text-white hover:bg-white/5")}>
-                  <Mic className="w-4 h-4" />
-                </Button>
                 <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message Financial Assistant..." className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent py-2.5 text-base placeholder:text-zinc-600 text-zinc-100 h-auto max-h-32 min-h-[40px]" />
                 <Button type="submit" disabled={(!input.trim() && !selectedFile) || isLoading} className={cn("rounded-lg h-9 w-9 p-0 shrink-0 transition-all duration-200", (!input.trim() && !selectedFile) ? "bg-zinc-800 text-zinc-600" : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-900/20")}>
                   <Send className="w-4 h-4" />
@@ -682,6 +887,141 @@ export default function Assistant() {
 
         </div>
       </div>
+      {/* VOICE MODAL OVERLAY */}
+      {isVoiceModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#09090b]/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="max-w-xl w-full mx-4 flex flex-col items-center">
+
+            {/* Close Button Top Right */}
+            <button
+              onClick={closeVoiceModal}
+              className="absolute top-8 right-8 p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+
+            {/* Visual Effect Area */}
+            <div className="relative w-64 h-64 mb-12 flex items-center justify-center">
+              {isListening && (
+                <>
+                  <div className="voice-wave" style={{ animationDelay: '0s' }} />
+                  <div className="voice-wave" style={{ animationDelay: '0.5s' }} />
+                  <div className="voice-wave" style={{ animationDelay: '1s' }} />
+                </>
+              )}
+
+              <div className={cn(
+                "w-32 h-32 rounded-full flex items-center justify-center z-10 transition-all duration-500 border-2 shadow-2xl",
+                isListening ? "bg-green-500/20 border-green-500/50 shadow-green-500/20" : "bg-zinc-800 border-zinc-700",
+                isVoiceLoading && "animate-pulse"
+              )}>
+                {isVoiceLoading ? (
+                  <RefreshCw className="w-12 h-12 text-primary animate-spin" />
+                ) : (
+                  <Mic className={cn("w-16 h-16", isListening ? "text-green-400" : "text-zinc-500")} />
+                )}
+              </div>
+
+              {/* Rotating Ring */}
+              {isListening && (
+                <div className="absolute inset-0 rounded-full border-2 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" style={{ animationDuration: '3s' }} />
+              )}
+            </div>
+
+            {/* Instruction / Status */}
+            <div className="text-center space-y-4 w-full">
+              <h2 className="text-2xl font-bold text-white font-rajdhani tracking-wider">
+                {isListening ? "Listening..." : isVoiceLoading ? "Processing Query..." : voiceReply ? "Response Ready" : "Start Speaking"}
+              </h2>
+
+              {/* Transcript Display */}
+              <div className="min-h-[60px] max-h-32 overflow-y-auto px-4 py-2">
+                {voiceTranscript ? (
+                  <p className="text-zinc-300 text-lg italic leading-relaxed">
+                    "{voiceTranscript}"
+                  </p>
+                ) : !isListening && !isVoiceLoading && !voiceReply ? (
+                  <p className="text-zinc-500 text-sm">Ask about RBI circulars, lending norms, or financial regulations...</p>
+                ) : null}
+              </div>
+
+              {/* Error Message */}
+              {voiceError && (
+                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center justify-center gap-2 text-red-400 text-sm mt-4 animate-in slide-in-from-top-2">
+                  <span className="font-bold">!</span>
+                  <span>{voiceError}</span>
+                </div>
+              )}
+
+              {/* Reply Preview (Optional for UI) */}
+              {voiceReply && !isVoiceLoading && (
+                <div className="mt-8 bg-zinc-900/50 border border-white/5 p-6 rounded-2xl text-left max-h-[30vh] overflow-y-auto custom-scrollbar prose prose-invert prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {voiceReply}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 items-center justify-center mt-8">
+                {isListening ? (
+                  <Button
+                    variant="outline"
+                    className="rounded-full px-8 py-6 bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all"
+                    onClick={stopListening}
+                  >
+                    Stop Listening
+                  </Button>
+                ) : !isVoiceLoading && (
+                  <Button
+                    className="rounded-full px-12 py-6 bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-900/30 transition-all font-bold text-lg"
+                    onClick={startVoiceChat}
+                  >
+                    Ask Again
+                  </Button>
+                )}
+
+                {(voiceReply || voiceError) && !isVoiceLoading && !isListening && (
+                  <Button
+                    variant="ghost"
+                    className="text-zinc-500 hover:text-white font-bold"
+                    onClick={closeVoiceModal}
+                  >
+                    Close
+                  </Button>
+                )}
+              </div>
+
+              {/* 🏆 Requirement 1: Continuous Mode Toggle */}
+              <div className="flex flex-col items-center gap-2 mt-8 pt-6 border-t border-white/5 w-full max-w-[200px]">
+                <div
+                  className="flex items-center gap-3 cursor-pointer group"
+                  onClick={() => setIsContinuousListening(!isContinuousListening)}
+                >
+                  <div className={cn(
+                    "w-10 h-5 rounded-full relative transition-all duration-300 border border-white/10",
+                    isContinuousListening ? "bg-green-600 shadow-[0_0_10px_rgba(34,197,94,0.4)]" : "bg-zinc-800"
+                  )}>
+                    <div className={cn(
+                      "absolute top-0.5 w-[14px] h-[14px] rounded-full bg-white transition-all duration-300 shadow-md",
+                      isContinuousListening ? "left-[22px]" : "left-0.5"
+                    )} />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-bold uppercase tracking-[2px] transition-colors",
+                    isContinuousListening ? "text-green-400" : "text-zinc-500"
+                  )}>
+                    Continuous Mode
+                  </span>
+                </div>
+                <p className="text-[9px] text-zinc-600 uppercase font-medium tracking-tight">
+                  Auto-restarts after each response
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

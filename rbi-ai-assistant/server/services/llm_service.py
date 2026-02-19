@@ -36,7 +36,7 @@ def get_llm_response_stream(user_message: str, file_data: bytes = None, file_typ
 Respond in a professional, structured, and easy-to-read format.
 Rules:
 - Use clear headings & bullet points.
-- Add relevant emojis (📌 ⚖️ 🛡️).
+- Add relevant markers.
 - Keep spacing clean.
 - If analyzing a document/image, be descriptive and accurate.
 - Always end with a short compliance note."""

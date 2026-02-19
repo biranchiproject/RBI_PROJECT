@@ -4,7 +4,10 @@ from supabase import create_client, Client, ClientOptions
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+# Load environment variables
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
+if not os.getenv("SUPABASE_URL"):
+    load_dotenv()
 
 # Get credentials
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -21,9 +24,9 @@ if not SUPABASE_SERVICE_ROLE_KEY:
 try:
     options = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, options=options)
-    print("✅ Supabase Client initialized with extended timeout (60s).")
+    print("SUCCESS: Supabase Client initialized with extended timeout (60s).")
 except Exception as e:
-    print(f"❌ Failed to initialize Supabase Client: {e}")
+    print(f"ERROR: Failed to initialize Supabase Client: {e}")
     raise e
 
 def get_supabase() -> Client:

@@ -115,4 +115,39 @@
       transform: translateY(0);
     }
   }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s infinite;
+  }
+
+  @keyframes pulse-slow {
+
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+    }
+
+    50% {
+      opacity: 0.8;
+      box-shadow: 0 0 40px rgba(0, 255, 136, 0.4);
+    }
+  }
+
+  .voice-wave {
+    @apply absolute rounded-full border border-primary/20;
+    animation: voice-wave-anim 2s infinite ease-out;
+  }
+
+  @keyframes voice-wave-anim {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
 }
